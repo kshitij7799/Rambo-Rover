@@ -1,1 +1,78 @@
+#include <ESP32Servo.h>
 
+const int motorPins[4][2] = {{32,33},{25,26},{27,14},{12,13}};
+
+const int SERVO_A = 18, SERVO_B = 19;
+const int TRIG = 23, ECHO = 22;
+const int LED = 15, LED2 = 2;
+
+Servo servoA, servoB;
+
+const int SAFE_DIST = 25;
+const int TURN_TIME = 450;
+const int BACK_TIME = 300;
+
+void setup() {
+    Serial.begin(115200);
+    
+    for(int i=0; i<4; i++) {
+        pinMode(motorPins[i][0], OUTPUT);
+        pinMode(motorPins[i][1], OUTPUT);
+    }
+    
+    pinMode(TRIG, OUTPUT); pinMode(ECHO, INPUT);
+    pinMode(LED, OUTPUT); pinMode(LED2, OUTPUT);
+
+    ESP32PWM::allocateTimer(0);
+    ESP32PWM::allocateTimer(1);
+    servoA.attach(SERVO_A, 500, 2400);
+    servoB.attach(SERVO_B, 500, 2400);
+    
+    servoA.write(90); servoB.write(90);
+    stopMotors();
+    digitalWrite(LED2, HIGH);
+    
+    Serial.println("Auto Rover Ready!");
+    delay(800);
+}
+void loop() {
+ int dist = getDistance();
+ 
+ if(dist > SAFE_DIST && dist < 300) {
+ goForward();
+ digitalWrite(LED, LOW);
+ } else {
+ digitalWrite(LED, HIGH);
+ avoid();
+ }
+ delay(50);
+}
+
+void motor(int m, int s) {
+ digitalWrite(motorPins[m][0], s > 0 ? HIGH : LOW);
+ digitalWrite(motorPins[m][1], s < 0 ? HIGH : LOW);
+}
+
+void goForward() { for(int i=0;i<4;i++) motor(i,1); }
+void goBackward() { for(int i=0;i<4;i++) motor(i,-1); }
+void turnLeft() { motor(0,-1); motor(1,1); motor(2,-1); motor(3,1); }
+void turnRight() { motor(0,1); motor(1,-1); motor(2,1); motor(3,-1); }
+void stopMotors() { for(int i=0;i<4;i++) motor(i,0); }
+
+long getDistance() {
+ digitalWrite(TRIG, LOW); delayMicroseconds(5);
+ digitalWrite(TRIG, HIGH); delayMicroseconds(10);
+ digitalWrite(TRIG, LOW);
+ long dur = pulseIn(ECHO, HIGH, 30000);
+ return (dur == 0) ? 999 : dur / 58;
+}
+
+void avoid() {
+ goBackward(); delay(BACK_TIME); stopMotors(); delay(150);
+ 
+ turnLeft(); delay(TURN_TIME); stopMotors(); delay(200);
+ 
+ if(getDistance() < SAFE_DIST) {
+ turnRight(); delay(TURN_TIME * 2); stopMotors(); delay(200);
+ }
+}
