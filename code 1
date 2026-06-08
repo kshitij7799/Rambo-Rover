@@ -1,0 +1,144 @@
+include <ESP32Servo.h>
+#include "BluetoothSerial.h"
+const char *pin = "1234";
+String device_name = "ESP32-rover 1";
+
+// Motor Pins
+const int M1_F = 32; // Motor 1 Forward
+const int M1_R = 33; // Motor 1 Reverse
+
+const int M2_F = 25;
+const int M2_R = 26;
+
+const int M3_F = 27;
+const int M3_R = 14;
+
+const int M4_F = 12;
+const int M4_R = 13;
+
+// Servos & Sensors
+const int PIN_SERVO_A = 18;
+const int PIN_SERVO_B = 19;
+const int PIN_TRIG = 23;
+const int PIN_ECHO = 22;
+const int PIN_LED = 15;
+const int PIN_LED_2 = 2;
+
+BluetoothSerial SerialBT;
+Servo servoA;
+Servo servoB;
+
+String numericPart = "";
+char codeReceived = 'S';
+
+void setup() {
+ Serial.begin(115200);
+ SerialBT.begin(device_name);
+ SerialBT.setTimeout(10);
+// Motor pins
+  pinMode(M1_F, OUTPUT); pinMode(M1_R, OUTPUT);
+  pinMode(M2_F, OUTPUT); pinMode(M2_R, OUTPUT);
+  pinMode(M3_F, OUTPUT); pinMode(M3_R, OUTPUT);
+  pinMode(M4_F, OUTPUT); pinMode(M4_R, OUTPUT);
+
+  pinMode(PIN_LED, OUTPUT);
+  pinMode(PIN_LED_2, OUTPUT);
+
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  servoA.attach(PIN_SERVO_A, 500, 2400);
+  servoB.attach(PIN_SERVO_B, 500, 2400);
+
+  pinMode(PIN_TRIG, OUTPUT);
+  pinMode(PIN_ECHO, INPUT);
+
+  stopMotors();
+  Serial.println("ESP32 Car Ready!");
+}
+
+void loop() {
+  if (Serial.available()) SerialBT.write(Serial.read());
+
+  while (SerialBT.available()) {
+    String line = SerialBT.readStringUntil('\n');
+    line.trim();
+    if (line.length() == 0) continue;
+
+    numericPart = "";
+    codeReceived = 'S';
+
+    for (char c : line) {
+      if (isDigit(c)) numericPart += c;
+      else if (c != '\n' && c != '\r') codeReceived = c;
+    }
+  }
+switch (codeReceived) {
+    case 'F': goForward(); break;
+    case 'B': goBackward(); break;
+    case 'L': turnLeft(); break;
+    case 'R': turnRight(); break;
+    case 'S': stopMotors(); break;
+    
+    case 'M': digitalWrite(PIN_LED, HIGH); break;
+    case 'm': digitalWrite(PIN_LED, LOW); break;
+    case 'N': digitalWrite(PIN_LED_2, HIGH); break;
+    case 'n': digitalWrite(PIN_LED_2, LOW); break;
+    
+    case 'J': if (numericPart != "") servoA.write(numericPart.toInt()); break;
+    case 'K': if (numericPart != "") servoB.write(numericPart.toInt()); break;
+  }
+  SerialBT.print("D");
+  SerialBT.println(measureDistance());
+  delay(20);
+}
+//  MOTOR FUNCTION
+
+void motorWrite(int fwd, int rev, int state) {
+  digitalWrite(fwd, state > 0 ? HIGH : LOW);
+  digitalWrite(rev, state < 0 ? HIGH : LOW);
+}
+
+void goForward() {
+  motorWrite(M1_F, M1_R, 1);
+  motorWrite(M2_F, M2_R, 1);
+  motorWrite(M3_F, M3_R, 1);
+  motorWrite(M4_F, M4_R, 1);
+}
+
+void goBackward() {
+  motorWrite(M1_F, M1_R, -1);
+  motorWrite(M2_F, M2_R, -1);
+  motorWrite(M3_F, M3_R, -1);
+  motorWrite(M4_F, M4_R, -1);
+}
+void turnLeft() {
+  // Diagonal style turning - Best for rotation
+  motorWrite(M1_F, M1_R, -1); // Front Left Backward
+  motorWrite(M2_F, M2_R, 1); // Front Right Forward
+  motorWrite(M3_F, M3_R, -1); // Rear Left Backward
+  motorWrite(M4_F, M4_R, 1); // Rear Right Forward
+}
+
+void turnRight() {
+  motorWrite(M1_F, M1_R, 1); // Front Left Forward
+  motorWrite(M2_F, M2_R, -1); // Front Right Backward
+  motorWrite(M3_F, M3_R, 1); // Rear Left Forward
+  motorWrite(M4_F, M4_R, -1); // Rear Right Backward
+}
+
+void stopMotors() {
+  motorWrite(M1_F, M1_R, 0);
+  motorWrite(M2_F, M2_R, 0);
+  motorWrite(M3_F, M3_R, 0);
+  motorWrite(M4_F, M4_R, 0);
+}
+
+long measureDistance() {
+  digitalWrite(PIN_TRIG, LOW);
+  delayMicroseconds(5);
+  digitalWrite(PIN_TRIG, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(PIN_TRIG, LOW);
+  long duration = pulseIn(PIN_ECHO, HIGH, 25000);
+  return (duration == 0) ? 999 : duration / 58;
+}
