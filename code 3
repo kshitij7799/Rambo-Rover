@@ -1,1 +1,151 @@
+// ===== MOTOR PINS =====
+const int M1_F = 32;
+const int M1_R = 33;
 
+const int M2_F = 25;
+const int M2_R = 26;
+
+const int M3_F = 27;
+const int M3_R = 14;
+
+const int M4_F = 12;
+const int M4_R = 13;
+
+// ===== IR SENSOR PINS =====
+const int S1 = 34;
+const int S2 = 35;
+const int S3 = 36;
+const int S4 = 39;
+
+void setup()
+{
+  Serial.begin(115200);
+
+  pinMode(S1, INPUT);
+  pinMode(S2, INPUT);
+  pinMode(S3, INPUT);
+  pinMode(S4, INPUT);
+
+  pinMode(M1_F, OUTPUT);
+  pinMode(M1_R, OUTPUT);
+  pinMode(M2_F, OUTPUT);
+  pinMode(M2_R, OUTPUT);
+  pinMode(M3_F, OUTPUT);
+  pinMode(M3_R, OUTPUT);
+  pinMode(M4_F, OUTPUT);
+  pinMode(M4_R, OUTPUT);
+
+  stopMotors();
+}
+
+void loop()
+{
+  int s1 = digitalRead(S1);
+  int s2 = digitalRead(S2);
+  int s3 = digitalRead(S3);
+  int s4 = digitalRead(S4);
+
+  // Most IR modules:
+  // BLACK LINE = LOW
+  // WHITE SURFACE = HIGH
+
+  // Line in center
+  if(s2 == LOW && s3 == LOW)
+  {
+    forward();
+  }
+
+  // Slight Left
+  else if(s1 == HIGH && s2 == LOW && s3 == HIGH)
+  {
+    leftSoft();
+  }
+
+  // Slight Right
+  else if(s4 == HIGH && s3 == LOW && s2 == HIGH)
+  {
+    rightSoft();
+  }
+
+  // Sharp Left
+  else if(s1 == LOW)
+  {
+    leftSharp();
+  }
+
+  // Sharp Right
+  else if(s4 == LOW)
+  {
+    rightSharp();
+  }
+
+  // All sensors detect line (junction)
+  else if(s1==LOW && s2==LOW && s3==LOW && s4==LOW)
+  {
+    forward();
+  }
+
+  // Lost line
+  else
+  {
+    stopMotors();
+  }
+
+  delay(5);
+}
+
+// ================= MOTOR FUNCTIONS =================
+
+void motorWrite(int fwd, int rev, int state)
+{
+  digitalWrite(fwd, state > 0 ? HIGH : LOW);
+  digitalWrite(rev, state < 0 ? HIGH : LOW);
+}
+
+void forward()
+{
+  motorWrite(M1_F,M1_R,1);
+  motorWrite(M2_F,M2_R,1);
+  motorWrite(M3_F,M3_R,1);
+  motorWrite(M4_F,M4_R,1);
+}
+
+void leftSoft()
+{
+  motorWrite(M1_F,M1_R,0);
+  motorWrite(M2_F,M2_R,1);
+  motorWrite(M3_F,M3_R,0);
+  motorWrite(M4_F,M4_R,1);
+}
+
+void rightSoft()
+{
+  motorWrite(M1_F,M1_R,1);
+  motorWrite(M2_F,M2_R,0);
+  motorWrite(M3_F,M3_R,1);
+  motorWrite(M4_F,M4_R,0);
+}
+
+void leftSharp()
+{
+  motorWrite(M1_F,M1_R,-1);
+  motorWrite(M2_F,M2_R,1);
+  motorWrite(M3_F,M3_R,-1);
+  motorWrite(M4_F,M4_R,1);
+}
+
+void rightSharp()
+{
+  motorWrite(M1_F,M1_R,1);
+  motorWrite(M2_F,M2_R,-1);
+  motorWrite(M3_F,M3_R,1);
+  motorWrite(M4_F,M4_R,-1);
+}
+
+void stopMotors()
+{
+  motorWrite(M1_F,M1_R,0);
+  motorWrite(M2_F,M2_R,0);
+  motorWrite(M3_F,M3_R,0);
+  motorWrite(M4_F,M4_R,0);
+}
