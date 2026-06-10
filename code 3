@@ -1,4 +1,10 @@
-// ===== MOTOR PINS =====
+#include <ESP32Servo.h>
+#include "BluetoothSerial.h"
+
+const char *pin = "1234";
+String device_name = "ESP32-rover 1";
+
+// Motor Pins
 const int M1_F = 32;
 const int M1_R = 33;
 
@@ -11,141 +17,274 @@ const int M3_R = 14;
 const int M4_F = 12;
 const int M4_R = 13;
 
-// ===== IR SENSOR PINS =====
-const int S1 = 34;
-const int S2 = 35;
-const int S3 = 36;
-const int S4 = 39;
+// Servos & Sensors
+const int PIN_SERVO_A = 18;
+const int PIN_SERVO_B = 19;
 
-void setup()
-{
+const int PIN_TRIG = 23;
+const int PIN_ECHO = 22;
+
+const int PIN_LED = 15;
+const int PIN_LED_2 = 2;
+
+// Flame Sensors
+const int FLAME_LEFT = 4;
+const int FLAME_RIGHT = 5;
+
+BluetoothSerial SerialBT;
+Servo servoA;
+Servo servoB;
+
+String numericPart = "";
+char codeReceived = 'S';
+
+char mode = 'M';   // M=Manual, F=Fire Detection
+
+void setup() {
+
   Serial.begin(115200);
 
-  pinMode(S1, INPUT);
-  pinMode(S2, INPUT);
-  pinMode(S3, INPUT);
-  pinMode(S4, INPUT);
+  SerialBT.begin(device_name);
+  SerialBT.setTimeout(10);
 
   pinMode(M1_F, OUTPUT);
   pinMode(M1_R, OUTPUT);
+
   pinMode(M2_F, OUTPUT);
   pinMode(M2_R, OUTPUT);
+
   pinMode(M3_F, OUTPUT);
   pinMode(M3_R, OUTPUT);
+
   pinMode(M4_F, OUTPUT);
   pinMode(M4_R, OUTPUT);
 
+  pinMode(PIN_LED, OUTPUT);
+  pinMode(PIN_LED_2, OUTPUT);
+
+  pinMode(FLAME_LEFT, INPUT);
+  pinMode(FLAME_RIGHT, INPUT);
+
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+
+  servoA.attach(PIN_SERVO_A, 500, 2400);
+  servoB.attach(PIN_SERVO_B, 500, 2400);
+
+  servoA.write(90);
+  servoB.write(90);
+
+  pinMode(PIN_TRIG, OUTPUT);
+  pinMode(PIN_ECHO, INPUT);
+
   stopMotors();
+
+  Serial.println("ESP32 Fire Rover Ready!");
 }
 
-void loop()
-{
-  int s1 = digitalRead(S1);
-  int s2 = digitalRead(S2);
-  int s3 = digitalRead(S3);
-  int s4 = digitalRead(S4);
+void loop() {
 
-  // Most IR modules:
-  // BLACK LINE = LOW
-  // WHITE SURFACE = HIGH
+  if (Serial.available())
+    SerialBT.write(Serial.read());
 
-  // Line in center
-  if(s2 == LOW && s3 == LOW)
-  {
-    forward();
+  while (SerialBT.available()) {
+
+    String line = SerialBT.readStringUntil('\n');
+    line.trim();
+
+    if (line.length() == 0)
+      continue;
+
+    numericPart = "";
+    codeReceived = 'S';
+
+    for (char c : line) {
+
+      if (isDigit(c))
+        numericPart += c;
+
+      else if (c != '\n' && c != '\r')
+        codeReceived = c;
+    }
   }
 
-  // Slight Left
-  else if(s1 == HIGH && s2 == LOW && s3 == HIGH)
-  {
-    leftSoft();
+  if (mode == 'M') {
+    executeCommand();
   }
 
-  // Slight Right
-  else if(s4 == HIGH && s3 == LOW && s2 == HIGH)
-  {
-    rightSoft();
+  if (mode == 'F') {
+    fireDetection();
   }
 
-  // Sharp Left
-  else if(s1 == LOW)
-  {
-    leftSharp();
-  }
+  SerialBT.print("D");
+  SerialBT.println(measureDistance());
 
-  // Sharp Right
-  else if(s4 == LOW)
-  {
-    rightSharp();
-  }
+  delay(20);
+}
 
-  // All sensors detect line (junction)
-  else if(s1==LOW && s2==LOW && s3==LOW && s4==LOW)
-  {
-    forward();
-  }
+void executeCommand() {
 
-  // Lost line
-  else
-  {
+  switch (codeReceived) {
+
+    case 'F':
+      goForward();
+      break;
+
+    case 'B':
+      goBackward();
+      break;
+
+    case 'L':
+      turnLeft();
+      break;
+
+    case 'R':
+      turnRight();
+      break;
+
+    case 'S':
+      stopMotors();
+      break;
+
+    case 'M':
+      digitalWrite(PIN_LED, HIGH);
+      break;
+
+    case 'm':
+      digitalWrite(PIN_LED, LOW);
+      break;
+
+    case 'N':
+      digitalWrite(PIN_LED_2, HIGH);
+      break;
+
+    case 'n':
+      digitalWrite(PIN_LED_2, LOW);
+      break;
+
+    case 'J':
+      if (numericPart != "")
+        servoA.write(numericPart.toInt());
+      break;
+
+    case 'K':
+      if (numericPart != "")
+        servoB.write(numericPart.toInt());
+      break;
+
+    case 'X':
+      mode = 'F';
+      stopMotors();
+      Serial.println("Fire Mode ON");
+      break;
+
+    case 'Y':
+      mode = 'M';
+      stopMotors();
+      Serial.println("Manual Mode ON");
+      break;
+  }
+}
+
+void fireDetection() {
+
+  bool leftFire = (digitalRead(FLAME_LEFT) == LOW);
+  bool rightFire = (digitalRead(FLAME_RIGHT) == LOW);
+
+  if (leftFire && !rightFire) {
+
+    Serial.println("Fire Left");
+
+    turnLeft();
+    delay(150);
+
     stopMotors();
   }
 
-  delay(5);
+  else if (rightFire && !leftFire) {
+
+    Serial.println("Fire Right");
+
+    turnRight();
+    delay(150);
+
+    stopMotors();
+  }
+
+  else if (leftFire && rightFire) {
+
+    Serial.println("Fire Ahead");
+
+    stopMotors();
+
+    digitalWrite(PIN_LED, HIGH);
+  }
+
+  else {
+
+    digitalWrite(PIN_LED, LOW);
+
+    goForward();
+  }
 }
 
-// ================= MOTOR FUNCTIONS =================
+void motorWrite(int fwd, int rev, int state) {
 
-void motorWrite(int fwd, int rev, int state)
-{
   digitalWrite(fwd, state > 0 ? HIGH : LOW);
   digitalWrite(rev, state < 0 ? HIGH : LOW);
 }
 
-void forward()
-{
-  motorWrite(M1_F,M1_R,1);
-  motorWrite(M2_F,M2_R,1);
-  motorWrite(M3_F,M3_R,1);
-  motorWrite(M4_F,M4_R,1);
+void goForward() {
+
+  motorWrite(M1_F, M1_R, 1);
+  motorWrite(M2_F, M2_R, 1);
+  motorWrite(M3_F, M3_R, 1);
+  motorWrite(M4_F, M4_R, 1);
 }
 
-void leftSoft()
-{
-  motorWrite(M1_F,M1_R,0);
-  motorWrite(M2_F,M2_R,1);
-  motorWrite(M3_F,M3_R,0);
-  motorWrite(M4_F,M4_R,1);
+void goBackward() {
+
+  motorWrite(M1_F, M1_R, -1);
+  motorWrite(M2_F, M2_R, -1);
+  motorWrite(M3_F, M3_R, -1);
+  motorWrite(M4_F, M4_R, -1);
 }
 
-void rightSoft()
-{
-  motorWrite(M1_F,M1_R,1);
-  motorWrite(M2_F,M2_R,0);
-  motorWrite(M3_F,M3_R,1);
-  motorWrite(M4_F,M4_R,0);
+void turnLeft() {
+
+  motorWrite(M1_F, M1_R, -1);
+  motorWrite(M2_F, M2_R, 1);
+  motorWrite(M3_F, M3_R, -1);
+  motorWrite(M4_F, M4_R, 1);
 }
 
-void leftSharp()
-{
-  motorWrite(M1_F,M1_R,-1);
-  motorWrite(M2_F,M2_R,1);
-  motorWrite(M3_F,M3_R,-1);
-  motorWrite(M4_F,M4_R,1);
+void turnRight() {
+
+  motorWrite(M1_F, M1_R, 1);
+  motorWrite(M2_F, M2_R, -1);
+  motorWrite(M3_F, M3_R, 1);
+  motorWrite(M4_F, M4_R, -1);
 }
 
-void rightSharp()
-{
-  motorWrite(M1_F,M1_R,1);
-  motorWrite(M2_F,M2_R,-1);
-  motorWrite(M3_F,M3_R,1);
-  motorWrite(M4_F,M4_R,-1);
+void stopMotors() {
+
+  motorWrite(M1_F, M1_R, 0);
+  motorWrite(M2_F, M2_R, 0);
+  motorWrite(M3_F, M3_R, 0);
+  motorWrite(M4_F, M4_R, 0);
 }
 
-void stopMotors()
-{
-  motorWrite(M1_F,M1_R,0);
-  motorWrite(M2_F,M2_R,0);
-  motorWrite(M3_F,M3_R,0);
-  motorWrite(M4_F,M4_R,0);
+long measureDistance() {
+
+  digitalWrite(PIN_TRIG, LOW);
+  delayMicroseconds(5);
+
+  digitalWrite(PIN_TRIG, HIGH);
+  delayMicroseconds(10);
+
+  digitalWrite(PIN_TRIG, LOW);
+
+  long duration = pulseIn(PIN_ECHO, HIGH, 25000);
+
+  return (duration == 0) ? 999 : duration / 58;
 }
