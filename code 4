@@ -1,1 +1,145 @@
+// ==============================
+// ESP32 RAMBO ROVER BEAM FOLLOWER
+// Left IR  -> GPIO36
+// Right IR -> GPIO39
+// ==============================
 
+// Motor Pins
+const int M1_F = 32;
+const int M1_R = 33;
+
+const int M2_F = 25;
+const int M2_R = 26;
+
+const int M3_F = 27;
+const int M3_R = 14;
+
+const int M4_F = 12;
+const int M4_R = 13;
+
+// IR Sensors
+const int IR_LEFT  = 36;
+const int IR_RIGHT = 39;
+
+void setup()
+{
+  Serial.begin(115200);
+
+  // Motor Pins
+  pinMode(M1_F, OUTPUT);
+  pinMode(M1_R, OUTPUT);
+
+  pinMode(M2_F, OUTPUT);
+  pinMode(M2_R, OUTPUT);
+
+  pinMode(M3_F, OUTPUT);
+  pinMode(M3_R, OUTPUT);
+
+  pinMode(M4_F, OUTPUT);
+  pinMode(M4_R, OUTPUT);
+
+  // IR Sensors
+  pinMode(IR_LEFT, INPUT);
+  pinMode(IR_RIGHT, INPUT);
+
+  stopMotors();
+
+  Serial.println("Beam Follower Ready");
+}
+
+void loop()
+{
+  beamFollower();
+  delay(10);
+}
+
+// =================================
+// BEAM FOLLOWER FUNCTION
+// =================================
+
+void beamFollower()
+{
+  int leftSensor  = digitalRead(IR_LEFT);
+  int rightSensor = digitalRead(IR_RIGHT);
+
+  Serial.print("Left: ");
+  Serial.print(leftSensor);
+  Serial.print("  Right: ");
+  Serial.println(rightSensor);
+
+  // Both sensors detect line
+  if (leftSensor == LOW && rightSensor == LOW)
+  {
+    goForward();
+  }
+
+  // Line towards left side
+  else if (leftSensor == LOW && rightSensor == HIGH)
+  {
+    turnLeft();
+  }
+
+  // Line towards right side
+  else if (leftSensor == HIGH && rightSensor == LOW)
+  {
+    turnRight();
+  }
+
+  // Line lost
+  else
+  {
+    stopMotors();
+  }
+}
+
+// =================================
+// MOTOR FUNCTIONS
+// =================================
+
+void motorWrite(int fwd, int rev, int state)
+{
+  digitalWrite(fwd, state > 0 ? HIGH : LOW);
+  digitalWrite(rev, state < 0 ? HIGH : LOW);
+}
+
+void goForward()
+{
+  motorWrite(M1_F, M1_R, 1);
+  motorWrite(M2_F, M2_R, 1);
+  motorWrite(M3_F, M3_R, 1);
+  motorWrite(M4_F, M4_R, 1);
+}
+
+void goBackward()
+{
+  motorWrite(M1_F, M1_R, -1);
+  motorWrite(M2_F, M2_R, -1);
+  motorWrite(M3_F, M3_R, -1);
+  motorWrite(M4_F, M4_R, -1);
+}
+
+void turnLeft()
+{
+  motorWrite(M1_F, M1_R, -1);
+  motorWrite(M2_F, M2_R, 1);
+
+  motorWrite(M3_F, M3_R, -1);
+  motorWrite(M4_F, M4_R, 1);
+}
+
+void turnRight()
+{
+  motorWrite(M1_F, M1_R, 1);
+  motorWrite(M2_F, M2_R, -1);
+
+  motorWrite(M3_F, M3_R, 1);
+  motorWrite(M4_F, M4_R, -1);
+}
+
+void stopMotors()
+{
+  motorWrite(M1_F, M1_R, 0);
+  motorWrite(M2_F, M2_R, 0);
+  motorWrite(M3_F, M3_R, 0);
+  motorWrite(M4_F, M4_R, 0);
+}
